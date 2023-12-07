@@ -7,6 +7,7 @@ version: '3.4'
 volumes:
   l1_data:
   l2_data:
+  l2_data_2:
   op_log:
 
 
@@ -49,6 +50,25 @@ services:
       - "${PWD}/../.devnet/genesis-l2.json:/genesis.json"
       - "${PWD}/test-jwt-secret.txt:/config/test-jwt-secret.txt"
     entrypoint:  # pass the L2 specific flags by overriding the entry-point and adding extra arguments
+      - "/bin/sh"
+      - "/entrypoint.sh"
+      - "--authrpc.jwtsecret=/config/test-jwt-secret.txt"
+    environment:
+      GETH_MINER_RECOMMIT: 100ms
+
+  l2_2:
+    build:
+      context: .
+      dockerfile: Dockerfile.l2
+    ports:
+      - "9645:8545"
+      - "8160:6060"
+      - "9646:8546"
+    volumes:
+      - "l2_data_2:/db"
+      - "${PWD}/../.devnet/genesis-l2-2.json:/genesis.json"
+      - "${PWD}/test-jwt-secret.txt:/config/test-jwt-secret.txt"
+    entrypoint:
       - "/bin/sh"
       - "/entrypoint.sh"
       - "--authrpc.jwtsecret=/config/test-jwt-secret.txt"
@@ -101,6 +121,52 @@ services:
       - "${PWD}/test-jwt-secret.txt:/config/test-jwt-secret.txt"
       - "${PWD}/../.devnet/rollup.json:/rollup.json"
       - op_log:/op_log
+  op-node-2:
+    depends_on:
+      - op_stack_go_builder
+      - l1
+      - l2_2
+    build:
+      context: ../
+      dockerfile: ./op-node/Dockerfile
+      args:
+        OP_STACK_GO_BUILDER: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-stack-go:devnet
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:devnet
+    command: >
+      op-node
+      --l1=ws://l1:8546
+      --l2=http://l2_2:8551
+      --l2.jwt-secret=/config/test-jwt-secret.txt
+      --sequencer.enabled
+      --sequencer.l1-confs=0
+      --verifier.l1-confs=0
+      --p2p.sequencer.key=8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba
+      --rollup.config=/rollup.json
+      --rpc.addr=0.0.0.0
+      --rpc.port=8545
+      --p2p.listen.ip=0.0.0.0
+      --p2p.listen.tcp=9004
+      --p2p.listen.udp=9004
+      --p2p.scoring.peers=light
+      --p2p.ban.peers=true
+      --snapshotlog.file=/op_log/snapshot.log
+      --p2p.priv.path=/config/p2p-node-key.txt
+      --metrics.enabled
+      --metrics.addr=0.0.0.0
+      --metrics.port=7300
+      --pprof.enabled
+      --rpc.enable-admin
+    ports:
+      - "7546:8545"
+      - "9004:9004"
+      - "7400:7300"
+      - "6070:6060"
+    volumes:
+      - "${PWD}/p2p-sequencer-key.txt:/config/p2p-sequencer-key.txt"
+      - "${PWD}/p2p-node-key.txt:/config/p2p-node-key.txt"
+      - "${PWD}/test-jwt-secret.txt:/config/test-jwt-secret.txt"
+      - "${PWD}/../.devnet/rollup_2.json:/rollup.json"
+      - op_log:/op_log
 
   op-proposer:
     depends_on:
@@ -121,6 +187,34 @@ services:
     environment:
       OP_PROPOSER_L1_ETH_RPC: http://l1:8545
       OP_PROPOSER_ROLLUP_RPC: http://op-node:8545
+      OP_PROPOSER_POLL_INTERVAL: 1s
+      OP_PROPOSER_NUM_CONFIRMATIONS: 1
+      OP_PROPOSER_MNEMONIC: test test test test test test test test test test test junk
+      OP_PROPOSER_L2_OUTPUT_HD_PATH: "m/44'/60'/0'/0/1"
+      OP_PROPOSER_L2OO_ADDRESS: "${L2OO_ADDRESS}"
+      OP_PROPOSER_PPROF_ENABLED: "true"
+      OP_PROPOSER_METRICS_ENABLED: "true"
+      OP_PROPOSER_ALLOW_NON_FINALIZED: "true"
+      OP_PROPOSER_RPC_ENABLE_ADMIN: "true"
+  op-proposer-2:
+    depends_on:
+      - op_stack_go_builder
+      - l1
+      - l2_2
+      - op-node-2
+    build:
+      context: ../
+      dockerfile: ./op-proposer/Dockerfile
+      args:
+        OP_STACK_GO_BUILDER: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-stack-go:devnet
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-proposer:devnet
+    ports:
+      - "6162:6060"
+      - "7402:7300"
+      - "6646:8545"
+    environment:
+      OP_PROPOSER_L1_ETH_RPC: http://l1:8545
+      OP_PROPOSER_ROLLUP_RPC: http://op-node-2:8545
       OP_PROPOSER_POLL_INTERVAL: 1s
       OP_PROPOSER_NUM_CONFIRMATIONS: 1
       OP_PROPOSER_MNEMONIC: test test test test test test test test test test test junk
@@ -151,6 +245,37 @@ services:
       OP_BATCHER_L1_ETH_RPC: http://l1:8545
       OP_BATCHER_L2_ETH_RPC: http://l2:8545
       OP_BATCHER_ROLLUP_RPC: http://op-node:8545
+      OP_BATCHER_MAX_CHANNEL_DURATION: 1
+      OP_BATCHER_SUB_SAFETY_MARGIN: 4 # SWS is 15, ChannelTimeout is 40
+      OP_BATCHER_POLL_INTERVAL: 1s
+      OP_BATCHER_NUM_CONFIRMATIONS: 1
+      OP_BATCHER_MNEMONIC: test test test test test test test test test test test junk
+      OP_BATCHER_SEQUENCER_HD_PATH: "m/44'/60'/0'/0/2"
+      OP_BATCHER_PPROF_ENABLED: "true"
+      OP_BATCHER_METRICS_ENABLED: "true"
+      OP_BATCHER_RPC_ENABLE_ADMIN: "true"
+      OP_BATCHER_BATCH_TYPE: 0
+
+  op-batcher-2:
+    depends_on:
+      - op_stack_go_builder
+      - l1
+      - l2_2
+      - op-node-2
+    build:
+      context: ../
+      dockerfile: ./op-batcher/Dockerfile
+      args:
+        OP_STACK_GO_BUILDER: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-stack-go:devnet
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:devnet
+    ports:
+      - "6161:6060"
+      - "7401:7300"
+      - "6645:8545"
+    environment:
+      OP_BATCHER_L1_ETH_RPC: http://l1:8545
+      OP_BATCHER_L2_ETH_RPC: http://l2_2:8545
+      OP_BATCHER_ROLLUP_RPC: http://op-node-2:8545
       OP_BATCHER_MAX_CHANNEL_DURATION: 1
       OP_BATCHER_SUB_SAFETY_MARGIN: 4 # SWS is 15, ChannelTimeout is 40
       OP_BATCHER_POLL_INTERVAL: 1s

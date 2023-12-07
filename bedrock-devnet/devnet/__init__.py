@@ -80,10 +80,12 @@ def main():
       sdk_dir=sdk_dir,
       genesis_l1_path=pjoin(devnet_dir, 'genesis-l1.json'),
       genesis_l2_path=pjoin(devnet_dir, 'genesis-l2.json'),
+      genesis_l2_path_2=pjoin(devnet_dir, 'genesis-l2-2.json'),
       allocs_path=pjoin(devnet_dir, 'allocs-l1.json'),
       addresses_json_path=pjoin(devnet_dir, 'addresses.json'),
       sdk_addresses_json_path=pjoin(devnet_dir, 'sdk-addresses.json'),
-      rollup_config_path=pjoin(devnet_dir, 'rollup.json')
+      rollup_config_path=pjoin(devnet_dir, 'rollup.json'),
+      rollup_config_path_2=pjoin(devnet_dir, 'rollup_2.json')
     )
 
     if args.test:
@@ -186,6 +188,16 @@ def devnet_l1_genesis(paths):
     finally:
         geth.terminate()
 
+def change_chain_id(path):
+    with open(path, 'r') as file:
+        data = json.load(file)
+
+    # Change l2ChainID
+    data['l2ChainID'] = 8453
+
+    # Write changes back to the file
+    with open(path, 'w') as file:
+        json.dump(data, file, indent=2)
 
 # Bring up the devnet where the contracts are deployed to L1
 def devnet_deploy(paths):
@@ -230,6 +242,20 @@ def devnet_deploy(paths):
             '--outfile.rollup', paths.rollup_config_path
         ], cwd=paths.op_node_dir)
 
+    change_chain_id(paths.devnet_config_path)
+    if os.path.exists(paths.genesis_l2_path_2):
+        log.info('L2 genesis and rollup configs already generated.')
+    else:
+        log.info('Generating L2 genesis and rollup configs.')
+        run_command([
+            'go', 'run', 'cmd/main.go', 'genesis', 'l2',
+            '--l1-rpc', 'http://localhost:8545',
+            '--deploy-config', paths.devnet_config_path,
+            '--deployment-dir', paths.deployment_dir,
+            '--outfile.l2', paths.genesis_l2_path_2,
+            '--outfile.rollup', paths.rollup_config_path_2
+        ], cwd=paths.op_node_dir)
+
     rollup_config = read_json(paths.rollup_config_path)
     addresses = read_json(paths.addresses_json_path)
 
@@ -239,7 +265,11 @@ def devnet_deploy(paths):
     })
     wait_up(9545)
     wait_for_rpc_server('127.0.0.1:9545')
-
+    run_command(['docker', 'compose', 'up', '-d', 'l2_2'], cwd=paths.ops_bedrock_dir, env={
+        'PWD': paths.ops_bedrock_dir
+    })
+    wait_up(9645)
+    wait_for_rpc_server('127.0.0.1:9645')
     l2_output_oracle = addresses['L2OutputOracleProxy']
     log.info(f'Using L2OutputOracle {l2_output_oracle}')
     batch_inbox_address = rollup_config['batch_inbox_address']
@@ -251,7 +281,11 @@ def devnet_deploy(paths):
         'L2OO_ADDRESS': l2_output_oracle,
         'SEQUENCER_BATCH_INBOX_ADDRESS': batch_inbox_address
     })
-
+    run_command(['docker', 'compose', 'up', '-d', 'op-node-2', 'op-proposer-2', 'op-batcher-2'], cwd=paths.ops_bedrock_dir, env={
+        'PWD': paths.ops_bedrock_dir,
+        'L2OO_ADDRESS': l2_output_oracle,
+        'SEQUENCER_BATCH_INBOX_ADDRESS': batch_inbox_address
+    })
     log.info('Bringing up `artifact-server`')
     run_command(['docker', 'compose', 'up', '-d', 'artifact-server'], cwd=paths.ops_bedrock_dir, env={
         'PWD': paths.ops_bedrock_dir
