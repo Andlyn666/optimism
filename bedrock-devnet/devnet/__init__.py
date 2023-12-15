@@ -242,6 +242,7 @@ def devnet_deploy(paths):
             '--outfile.rollup', paths.rollup_config_path
         ], cwd=paths.op_node_dir)
 
+    init_devnet_l1_deploy_config(paths, update_timestamp=True)
     change_chain_id(paths.devnet_config_path)
     if os.path.exists(paths.genesis_l2_path_2):
         log.info('L2 genesis and rollup configs already generated.')
