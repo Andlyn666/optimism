@@ -141,7 +141,7 @@ services:
       --sequencer.l1-confs=0
       --verifier.l1-confs=0
       --p2p.sequencer.key=8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba
-      --rollup.config=/rollup.json
+      --rollup.config=/rollup_2.json
       --rpc.addr=0.0.0.0
       --rpc.port=8545
       --p2p.listen.ip=0.0.0.0
@@ -165,7 +165,7 @@ services:
       - "${PWD}/p2p-sequencer-key.txt:/config/p2p-sequencer-key.txt"
       - "${PWD}/p2p-node-key.txt:/config/p2p-node-key.txt"
       - "${PWD}/test-jwt-secret.txt:/config/test-jwt-secret.txt"
-      - "${PWD}/../.devnet/rollup_2.json:/rollup.json"
+      - "${PWD}/../.devnet/rollup_2.json:/rollup_2.json"
       - op_log:/op_log
 
   op-proposer:
