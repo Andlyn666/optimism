@@ -212,11 +212,15 @@ def devnet_deploy(paths):
     wait_up(8545)
     wait_for_rpc_server('127.0.0.1:8545')
 
+
     if os.path.exists(paths.genesis_l2_path):
         log.info('L2 genesis and rollup configs already generated.')
     else:
         log.info('Generating L2 genesis and rollup configs.')
         l2_allocs_path = pjoin(paths.devnet_dir, 'allocs-l2.json')
+
+        # copy the allocs-l2.json to paths.genesis_l2_path
+        shutil.copy(pjoin(paths.mono_repo_dir, 'allocs-l2.json'), l2_allocs_path)
         if os.path.exists(l2_allocs_path) == False or DEVNET_FPAC == True:
             # Also regenerate if FPAC.
             # The FPAC flag may affect the L1 deployments addresses, which may affect the L2 genesis.
